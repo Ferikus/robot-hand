@@ -3,7 +3,7 @@ import numpy as np
 # Параметры лемнискаты Бернулли
 a = 0.3
 scale = 1.2
-x0, y0 = 1.1, 0.6
+x0, y0 = 1.5, 0.6
 
 
 def lemniscate(t):

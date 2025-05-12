@@ -1,10 +1,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from utils.config import l1, l2, l3, l4, theta_initial
+from utils.forward_kinematics import forward_kinematics
+from utils.trajectory import lemniscate
 
-from utils.forward_kinematics import *
-from utils.cramer_solve import *
-from utils.trajectory import *
+
+def full_forward_kinematics(q):
+    """Возвращает положения узлов манипулятора"""
+    q1, q2, q3, q4 = q
+    p0 = np.array([0.0, 0.0])
+    p1 = p0 + np.array([l1 * np.cos(q1), l1 * np.sin(q1)])
+    p2 = p1 + np.array([(q3 + l2 + l3) * np.cos(q1 + q2), (q3 + l2 + l3) * np.sin(q1 + q2)])
+    p3 = p2 + np.array([l4 * np.cos(q1 + q2 + q4), l4 * np.sin(q1 + q2 + q4)])
+    return [p0, p1, p2, p3]
 
 
 def jacobian(q):
@@ -31,72 +40,63 @@ def jacobian(q):
     return J
 
 
-def update_angles(t, q_prev):
-    """Обновление углов и растяжения"""
-    q = q_prev.copy()
-    x_target, y_target = lemniscate(t)
-
-    for _ in range(30):  # Увеличено число итераций
-        x_current, y_current = forward_kinematics(q)
-        error = np.array([x_target - x_current, y_target - y_current])
-
-        if np.linalg.norm(error) < 1e-5:
-            break
-
+def solve_ik(px, py, q_init, max_iter=50, tol=1e-3):
+    """Решение обратной кинематики"""
+    q = q_init.copy()
+    for _ in range(max_iter):
+        x, y = forward_kinematics(q)
+        err = np.array([px - x, py - y])
+        if np.linalg.norm(err) < tol: break
         J = jacobian(q)
-        J_reduced = J[:, [0, 2]]
-
-        # Регуляризация для устойчивости
-        A = J_reduced.T @ J_reduced + 0.1 * np.eye(2)
-        b = J_reduced.T @ error
-        delta_q = cramer_solve(A, b)
-
-        q[[0, 2]] += delta_q
-
+        dq = np.linalg.pinv(J).dot(err)
+        q += 0.5 * dq
+        q[3] = max(0, q[3])
     return q
 
 
-if __name__ == "__main__":
-    # Генерация траектории (2 оборота)
-    t_values = np.linspace(0, 4 * np.pi, 200)  # Два периода
-    theta_values = [theta_initial.copy()]
+if __name__ == '__main__':
+    # Инициализация параметров
+    q0 = theta_initial.copy()
+    t_values = np.linspace(0, 2 * np.pi, 200)
+    traj = np.array([lemniscate(t) for t in t_values])
 
-    # Предварительный расчет траектории
-    for t in t_values[1:]:
-        theta_values.append(update_angles(t, theta_values[-1]))
+    # Расчет конфигураций
+    configs = []
+    q_cur = q0.copy()
+    for pt in traj:
+        q_sol = solve_ik(pt[0], pt[1], q_cur)
+        configs.append(q_sol)
+        q_cur = q_sol
 
-    theta_values += theta_values[:50]
+    # Настройка анимации
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_aspect('equal')
+    ax.set_xlim(-0.5, 2.5)
+    ax.set_ylim(-0.5, 1.2)
 
-    # Визуализация
-    fig, ax = plt.subplots()
-    ax.set_xlim(-0.5, 2)
-    ax.set_ylim(-0.5, 1.5)
-
+    # Отрисовка лемнискаты
     x_lem, y_lem = lemniscate(t_values)
-    ax.plot(x_lem, y_lem, 'r--', label='Лемниската')
+    ax.plot(x_lem, y_lem, 'r--', lw=1.5, label='Траектория')
 
-    links, = ax.plot([], [], 'bo-', lw=2)
-    ax.legend()
+    lines = [ax.plot([], [], 'bo-', lw=3)[0] for _ in range(3)]
+
+
+    def init():
+        for ln in lines: ln.set_data([], [])
+        return lines
 
 
     def animate(i):
-        q = theta_values[i]
-        x = [
-            0,
-            l1 * np.cos(q[0]),
-            l1 * np.cos(q[0]) + (q[2] + l2 + l3) * np.cos(q[0] + q[1]),
-            l1 * np.cos(q[0]) + (q[2] + l2 + l3) * np.cos(q[0] + q[1]) + l4 * np.cos(q[0] + q[1] + q[3])
-        ]
-        y = [
-            0,
-            l1 * np.sin(q[0]),
-            l1 * np.sin(q[0]) + (q[2] + l2 + l3) * np.sin(q[0] + q[1]),
-            l1 * np.sin(q[0]) + (q[2] + l2 + l3) * np.sin(q[0] + q[1]) + l4 * np.sin(q[0] + q[1] + q[3])
-        ]
-        links.set_data(x, y)
-        return links,
+        pts = full_forward_kinematics(configs[i])
+        for k in range(3):
+            x0, y0 = pts[k]
+            x1, y1 = pts[k + 1]
+            lines[k].set_data([x0, x1], [y0, y1])
+        return lines
 
 
-    ani = FuncAnimation(fig, animate, frames=len(t_values), interval=50, blit=True)
-    plt.title('Траектория манипулятора')
+    ani = FuncAnimation(fig, animate, init_func=init,
+                        frames=len(configs), interval=25, blit=True)
+    ani.save('movement_without_obstacle.gif', writer='pillow', fps=20)
+    plt.title('Движение манипулятора без препятствий')
     plt.show()

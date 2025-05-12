@@ -7,11 +7,6 @@ from utils.trajectory import *
 
 from movement_wo_obstacle import jacobian
 
-# Параметры манипулятора
-l1 = l4 = 0.5
-l2 = l3 = 0.25
-theta_initial = np.deg2rad([45, -45, 0.0, 45])
-
 
 def update_angles(t, q_prev, max_iter=100, tolerance=1e-5):
     """Обновление углов и растяжения в зависимости от итераций и ошибки"""
@@ -39,47 +34,47 @@ def update_angles(t, q_prev, max_iter=100, tolerance=1e-5):
 
 if __name__ == "__main__":
     # Параметры исследования
-    n_points = 50
+    n_points_list = [10, 20, 30, 40, 50, 75, 100, 150, 200]  # исследуемые значения количества точек
     tolerance = 1e-4
     max_iter = 100
 
-    # Сбор данных
-    errors = {}
-    iter_counts = {}
+    errors = {}    # средняя ошибка для каждого n_points
+    iter_counts = {}  # среднее число итераций для каждого n_points
 
-    t_values = np.linspace(0, 2 * np.pi, n_points)
-    theta_values = [theta_initial.copy()]
-    current_errors = []
-    current_iter_counts = []
+    for n_points in n_points_list:
+        t_values = np.linspace(0, 2 * np.pi, n_points)
+        theta_values = [theta_initial.copy()]
+        current_errors = []
+        current_iter_counts = []
 
-    for t in t_values[1:]:
-        q_new, iters, err = update_angles(t, theta_values[-1], max_iter, tolerance)
-        theta_values.append(q_new)
-        current_errors.append(err)
-        current_iter_counts.append(iters)
+        # Расчет для текущего n_points
+        for t in t_values[1:]:
+            q_new, iters, err = update_angles(t, theta_values[-1], max_iter, tolerance)
+            theta_values.append(q_new)
+            current_errors.append(err)
+            current_iter_counts.append(iters)
 
-    errors[n_points] = current_errors
-    iter_counts[n_points] = current_iter_counts
+        # Сохраняем средние значения
+        errors[n_points] = np.mean(current_errors)
+        iter_counts[n_points] = np.mean(current_iter_counts)
 
     # Построение графиков
     plt.figure(figsize=(12, 6))
 
-    # График ошибок
+    # График средней ошибки
     plt.subplot(1, 2, 1)
-    plt.plot(errors[n_points], label=f'N={n_points}')
-    plt.xlabel('Точка траектории')
-    plt.ylabel('Ошибка позиционирования')
+    plt.plot(n_points_list, [errors[n] for n in n_points_list], 'bo-')
+    plt.xlabel('Количество точек траектории')
+    plt.ylabel('Средняя ошибка')
     plt.yscale('log')
-    plt.legend()
-    plt.title('Зависимость ошибки от количества точек')
+    plt.title('Зависимость ошибки от числа точек')
 
-    # График итераций
+    # График средних итераций
     plt.subplot(1, 2, 2)
-    plt.plot(iter_counts[n_points], label=f'N={n_points}')
-    plt.xlabel('Точка траектории')
-    plt.ylabel('Количество итераций')
-    plt.legend()
-    plt.title('Зависимость итераций от количества точек')
+    plt.plot(n_points_list, [iter_counts[n] for n in n_points_list], 'ro-')
+    plt.xlabel('Количество точек траектории')
+    plt.ylabel('Среднее число итераций')
+    plt.title('Зависимость итераций от числа точек')
 
     plt.tight_layout()
     plt.show()
